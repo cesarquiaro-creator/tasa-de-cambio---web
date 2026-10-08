@@ -166,7 +166,7 @@
     <div class="app-container">
         <!-- Encabezado con tu Logo Real -->
         <div class="brand-header">
-            <img src="LOGO TASA DE CAMBIO.png" alt="Logo">
+            <img src="LOGO TASA DE CAMBIO.PNG" alt="CQ Asesoría Financiera Logo">
             <div class="subtitle">Tasas & Cambio | Actualización Diaria</div>
         </div>
 
@@ -201,24 +201,95 @@
         const supabaseUrl = "https://bmqvbojzpbdhheploldb.supabase.co/rest/v1/tasas_bcv";
         const apiKey = "sb_publishable_3-N_8fCjbM9I9LTUaue-jw_UikddNCK";
 
-        // Fecha actual por defecto
-        document.getElementById('fecha').valueAsDate = new Date();
+        const inputFecha = document.getElementById('fecha');
+        const inputUsd = document.getElementById('tasa_usd');
+        const inputEur = document.getElementById('tasa_eur');
+        const inputBinance = document.getElementById('tasa_binance');
+        const alerta = document.getElementById('mensajeAlerta');
 
+        // Función para consultar tasas existentes de una fecha en Supabase
+        async function cargarTasasPorFecha(fechaSeleccionada) {
+            try {
+                const response = await fetch(`${supabaseUrl}?fecha=eq.${fechaSeleccionada}&select=*`, {
+                    method: 'GET',
+                    headers: {
+                        'apikey': apiKey,
+                        'Authorization': 'Bearer ' + apiKey
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data && data.length > 0) {
+                        // Si ya existen registros para esa fecha, los autocompleta
+                        inputUsd.value = data[0].tasa_usd;
+                        inputEur.value = data[0].tasa_eur;
+                        inputBinance.value = data[0].tasa_binance;
+                        
+                        alerta.textContent = "Datos cargados para esta fecha. Modifica el USDT si es necesario.";
+                        alerta.className = "message success";
+                    } else {
+                        // Si no hay datos, intenta buscar el registro más reciente anterior para heredar USD y EUR
+                        buscarUltimaTasaBase();
+                    }
+                }
+            } catch (error) {
+                console.error("Error consultando la fecha:", error);
+            }
+        }
+
+        // Función auxiliar para traer la última tasa guardada (para clonar USD y EUR automáticamente)
+        async function buscarUltimaTasaBase() {
+            try {
+                const response = await fetch(`${supabaseUrl}?order=fecha.desc&limit=1`, {
+                    method: 'GET',
+                    headers: {
+                        'apikey': apiKey,
+                        'Authorization': 'Bearer ' + apiKey
+                    }
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data && data.length > 0) {
+                        // Hereda el USD y EUR del último registro que se hizo
+                        inputUsd.value = data[0].tasa_usd;
+                        inputEur.value = data[0].tasa_eur;
+                        inputBinance.value = ''; // Deja el USDT libre para que lo pongas nuevo
+                        alerta.style.display = "none";
+                    }
+                }
+            } catch (e) {
+                console.log("No se pudo precargar la última base:", e);
+            }
+        }
+
+        // Fecha actual por defecto al abrir la app
+        inputFecha.valueAsDate = new Date();
+        cargarTasasPorFecha(inputFecha.value);
+
+        // Cada vez que cambie la fecha, busca si ya hay datos de ese día
+        inputFecha.addEventListener('change', function() {
+            alerta.style.display = "none";
+            if (this.value) {
+                cargarTasasPorFecha(this.value);
+            }
+        });
+
+        // Envío del formulario (Guardar / Actualizar Upsert)
         document.getElementById('tasaForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             
             const btn = document.getElementById('btnGuardar');
-            const alerta = document.getElementById('mensajeAlerta');
             
             btn.disabled = true;
             btn.textContent = "Verificando y guardando...";
             alerta.className = "message";
             alerta.style.display = "none";
 
-            const fecha = document.getElementById('fecha').value;
-            const tasa_usd = parseFloat(document.getElementById('tasa_usd').value);
-            const tasa_eur = parseFloat(document.getElementById('tasa_eur').value);
-            const tasa_binance = parseFloat(document.getElementById('tasa_binance').value);
+            const fecha = inputFecha.value;
+            const tasa_usd = parseFloat(inputUsd.value);
+            const tasa_eur = parseFloat(inputEur.value);
+            const tasa_binance = parseFloat(inputBinance.value);
 
             const payload = {
                 fecha: fecha,
@@ -228,8 +299,6 @@
             };
 
             try {
-                // Usamos la directiva 'resolution=merge-duplicates' (Upsert) 
-                // para que si la fecha ya existe, actualice los datos limpiamente en lugar de dar error.
                 const response = await fetch(supabaseUrl, {
                     method: 'POST',
                     headers: {
@@ -244,10 +313,8 @@
                 if (response.ok) {
                     alerta.textContent = "¡Tasa registrada/actualizada con éxito en Supabase!";
                     alerta.className = "message success";
-                    document.getElementById('tasa_usd').value = '';
-                    document.getElementById('tasa_eur').value = '';
-                    document.getElementById('tasa_binance').value = '';
-                    document.getElementById('tasa_usd').focus();
+                    inputBinance.value = '';
+                    inputBinance.focus();
                 } else {
                     const errorData = await response.json();
                     throw new Error(errorData.message || "Error al procesar la solicitud.");
